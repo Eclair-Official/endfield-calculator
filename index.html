@@ -521,6 +521,13 @@
             // 显示统计信息
             const actualRate = solutions.totalRate;
             const actualTime = solutions.totalTime;
+            
+            // 检查实际效率是否小于等于40秒
+            if (actualTime <= 40) {
+                alert('计算出的实际效率不能小于等于40秒！\n当前实际效率为 ' + actualTime.toFixed(2) + ' 秒/个\n目标效率为 ' + targetEfficiency.toFixed(2) + ' 秒/个\n\n这意味着分流方案过于激进，导致生产周期比充电周期还短。\n请调整输入参数（增大电池供电量或调整其他参数）。');
+                return;
+            }
+            
             const efficiency = actualTime > 0 ? (actualTime / targetEfficiency * 100).toFixed(2) : '0.00';
             
             // 计算每天节省的电池数量（个）
