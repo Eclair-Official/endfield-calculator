@@ -505,66 +505,100 @@
         }
         
         function findBestSplit(targetRate) {
-            // 生成所有可能的分流组合
-            const maxDepth = 20;
-            const allPossibleRates = generatePossibleRates(maxDepth);
+            // 目标时间 = 1 / 目标速率
+            const targetTime = 1 / targetRate;
             
-            // 找到最优组合
-            return findOptimalCombination(targetRate, allPossibleRates);
+            // 从目标时间反向推导最佳分流组合
+            return findOptimalSplitFromTime(targetTime);
         }
         
-        function generatePossibleRates(maxDepth) {
-            const rates = new Map();
+        function findOptimalSplitFromTime(targetTime) {
+            // 基础时间是2秒/个
+            const baseTime = 2;
             
-            function dfs(currentTime, splits, depth) {
-                if (depth > maxDepth) return;
-                
-                const currentRate = 1 / currentTime;
-                const key = currentRate.toFixed(10);
-                
-                if (!rates.has(key) || splits.length < rates.get(key).splits.length) {
-                    rates.set(key, {
-                        splits: [...splits],
-                        rate: currentRate,
-                        time: currentTime
-                    });
-                }
-                
-                // 尝试二分（时间×2）
-                dfs(currentTime * 2, [...splits, 2], depth + 1);
-                
-                // 尝试三分（时间×3）
-                dfs(currentTime * 3, [...splits, 3], depth + 1);
+            // 如果目标时间小于等于基础时间，不需要分流
+            if (targetTime <= baseTime) {
+                return {
+                    pipeline: {
+                        splits: [],
+                        rate: 1 / baseTime,
+                        time: baseTime
+                    },
+                    totalRate: 1 / baseTime,
+                    totalTime: baseTime
+                };
             }
             
-            dfs(2, [], 0); // 从2秒/个开始
-            return Array.from(rates.values());
-        }
-        
-        function findOptimalCombination(targetRate, possibleRates) {
-            // 筛选出速率大于等于目标速率的选项（速度要更快）
-            let validRates = possibleRates.filter(r => r.rate >= targetRate);
+            // 计算需要的倍数
+            const multiplier = targetTime / baseTime;
             
-            if (validRates.length === 0) {
-                // 如果没有大于等于目标的，取最大的那个
-                validRates = [possibleRates.reduce((max, r) => r.rate > max.rate ? r : max)];
-            }
+            // 使用贪心算法找到最接近的 2^a × 3^b 组合
+            const best = findBestMultiplier(multiplier);
             
-            // 排序：优先选择速率小的（更接近目标但不低于目标）
-            validRates.sort((a, b) => {
-                if (Math.abs(a.rate - b.rate) > 0.0001) {
-                    return a.rate - b.rate;
-                }
-                return a.splits.length - b.splits.length;
-            });
+            // 构建分流数组
+            const splits = [];
+            for (let i = 0; i < best.count3; i++) splits.push(3);
+            for (let i = 0; i < best.count2; i++) splits.push(2);
             
-            // 选择最接近目标的那个
-            const bestRate = validRates[0];
+            const actualTime = baseTime * best.actualMultiplier;
+            const actualRate = 1 / actualTime;
             
             return {
-                pipeline: bestRate,
-                totalRate: bestRate.rate,
-                totalTime: bestRate.time
+                pipeline: {
+                    splits: splits,
+                    rate: actualRate,
+                    time: actualTime
+                },
+                totalRate: actualRate,
+                totalTime: actualTime
+            };
+        }
+        
+        function findBestMultiplier(targetMultiplier) {
+            // 找到最接近 targetMultiplier 的 2^a × 3^b
+            // 使用对数来计算：log(target) = a*log(2) + b*log(3)
+            
+            const log2 = Math.log(2);
+            const log3 = Math.log(3);
+            const logTarget = Math.log(targetMultiplier);
+            
+            let bestDiff = Infinity;
+            let bestCount2 = 0;
+            let bestCount3 = 0;
+            let bestMultiplier = 1;
+            
+            // 限制搜索范围以提高效率
+            const maxPower = Math.ceil(logTarget / Math.min(log2, log3)) + 5;
+            
+            for (let count3 = 0; count3 <= maxPower; count3++) {
+                for (let count2 = 0; count2 <= maxPower; count2++) {
+                    const multiplier = Math.pow(2, count2) * Math.pow(3, count3);
+                    
+                    // 只考虑小于等于目标的倍数（速度要快于或等于目标）
+                    if (multiplier <= targetMultiplier) {
+                        const diff = Math.abs(multiplier - targetMultiplier);
+                        
+                        if (diff < bestDiff) {
+                            bestDiff = diff;
+                            bestCount2 = count2;
+                            bestCount3 = count3;
+                            bestMultiplier = multiplier;
+                        }
+                    }
+                }
+            }
+            
+            // 如果没找到小于等于目标的（只有基础情况会出现），返回基础值
+            if (bestDiff === Infinity) {
+                bestCount2 = 0;
+                bestCount3 = 0;
+                bestMultiplier = 1;
+            }
+            
+            return {
+                count2: bestCount2,
+                count3: bestCount3,
+                actualMultiplier: bestMultiplier
             };
         }
         
