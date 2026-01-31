@@ -359,12 +359,12 @@
         <div class="input-section">
             <div class="input-group">
                 <label for="consumption">满电消耗 (x):</label>
-                <input type="number" id="consumption" min="0" step="1" placeholder="输入满电消耗">
+                <input type="number" id="consumption" min="1" step="1" placeholder="输入满电消耗" oninput="validatePositiveInteger(this)" onkeypress="return isNumberKey(event)">
             </div>
             
             <div class="input-group">
                 <label for="production">满电产出 (y):</label>
-                <input type="number" id="production" min="0" step="1" placeholder="输入满电产出">
+                <input type="number" id="production" min="1" step="1" placeholder="输入满电产出" oninput="validatePositiveInteger(this)" onkeypress="return isNumberKey(event)">
             </div>
             
             <div class="input-group">
@@ -399,13 +399,74 @@
     </div>
 
     <script>
+        // 验证只能输入数字键
+        function isNumberKey(evt) {
+            const charCode = (evt.which) ? evt.which : evt.keyCode;
+            // 允许数字0-9
+            if (charCode >= 48 && charCode <= 57) {
+                return true;
+            }
+            // 阻止其他字符（包括负号、小数点等）
+            evt.preventDefault();
+            return false;
+        }
+        
+        // 验证输入为正整数
+        function validatePositiveInteger(input) {
+            let value = input.value;
+            
+            // 移除所有非数字字符
+            value = value.replace(/[^0-9]/g, '');
+            
+            // 移除前导零
+            if (value.length > 1 && value[0] === '0') {
+                value = value.replace(/^0+/, '');
+            }
+            
+            // 如果为空，设为空字符串
+            if (value === '') {
+                input.value = '';
+                return;
+            }
+            
+            // 转换为数字并验证
+            const numValue = parseInt(value, 10);
+            
+            // 确保大于0
+            if (numValue <= 0) {
+                input.value = '';
+                return;
+            }
+            
+            input.value = numValue.toString();
+        }
+        
         function calculate() {
             const x = parseFloat(document.getElementById('consumption').value);
             const y = parseFloat(document.getElementById('production').value);
             const z = parseFloat(document.getElementById('battery').value);
             
-            if (!x || !y || !z || x <= 0 || y <= 0 || z <= 0) {
-                alert('请输入有效的数值！');
+            // 验证输入是否为空或无效
+            if (!x || !y || !z) {
+                alert('请填写所有必填项！');
+                return;
+            }
+            
+            // 验证是否为正数
+            if (x <= 0 || y <= 0 || z <= 0) {
+                alert('所有数值必须大于0！');
+                return;
+            }
+            
+            // 验证是否为整数
+            if (!Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(z)) {
+                alert('请输入整数！');
+                return;
+            }
+            
+            // 检查满电产出是否至少大于1节电池供电量
+            if (y <= z) {
+                alert('满电产出必须至少大于1节选定的电池供电量！\n当前满电产出: ' + y + '\n当前电池供电量: ' + z + '\n最小要求: ' + (z + 1));
                 return;
             }
             
