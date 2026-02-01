@@ -436,9 +436,7 @@
                 document.getElementById('usageCount').textContent = data.count || 0;
             } catch (error) {
                 console.log('无法加载使用次数:', error);
-                // 降级到本地存储显示
-                const localCount = localStorage.getItem('endfield-calculator-usage') || 0;
-                document.getElementById('usageCount').textContent = localCount + ' (本地)';
+                document.getElementById('usageCount').textContent = '?';
             }
         }
         
@@ -452,11 +450,6 @@
                 document.getElementById('usageCount').textContent = data.count;
             } catch (error) {
                 console.log('无法更新使用次数:', error);
-                // 降级到本地存储
-                const currentCount = parseInt(localStorage.getItem('endfield-calculator-usage') || 0);
-                const newCount = currentCount + 1;
-                localStorage.setItem('endfield-calculator-usage', newCount);
-                document.getElementById('usageCount').textContent = newCount + ' (本地)';
             }
         }
         
