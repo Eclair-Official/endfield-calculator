@@ -1,0 +1,37 @@
+# .github/workflows/use-deploy-key.yml
+
+name: Use Deploy Key Secret
+
+on:
+  workflow_dispatch:
+
+jobs:
+  access-secret:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup SSH Key and Directory
+        run: |
+          # 步骤 1: 创建 .ssh 目录（如果它不存在）
+          # -p 参数确保在父目录不存在时也不会报错
+          mkdir -p ~/.ssh
+
+          # 步骤 2: 将 Secret 写入文件
+          # 使用 '${{ secrets.DEPLOY_KEY }}' 语法获取 Secret 内容
+          echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/deploy_key
+
+          # 步骤 3: 设置正确的文件权限
+          chmod 600 ~/.ssh/deploy_key
+
+          # 步骤 4: (可选) 验证文件是否创建成功
+          echo "SSH key created at ~/.ssh/deploy_key"
+          ls -l ~/.ssh/deploy_key
+
+      - name: Example usage with SSH
+        run: |
+          echo "Deploy key is ready for use in subsequent steps."
+          # 你的 SSH 命令可以放在这里，例如：
+          # ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no user@your-server.com 'echo "Connection successful"'
