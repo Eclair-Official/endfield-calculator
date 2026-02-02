@@ -14,7 +14,9 @@
                 min-height: 100vh;
                 font-size: 13px;
             }
-
+            html {
+                scroll-behavior: smooth;
+            }
             .container {
                 background: white;
                 border-radius: 4px;
@@ -39,7 +41,47 @@
             .input-group {
                 margin-bottom: 8px;
             }
+            .btn-highlight {
+                background-color: #28a745;
+                color: #ffffff;
+                border: none;
+                border-radius: 4px;
+                /* 核心：确保宽度随内容包裹，不拉伸 */
+                display: inline-block;
+                /* 内边距适中，仅给文字周围少量留白，不增加多余宽度 */
+                padding: 6px 12px;
+                margin: 0 4px;
+                /* 取消默认宽度，随内容自适应 */
+                width: auto;
+                /* 鼠标悬浮手型 */
+                cursor: pointer;
+                outline: none;
+                /* 可选：取消按钮默认的文字居中（如需左对齐，可添加 text-align: left;） */
+                text-align: center;
+            }
 
+            .btn-highlight:hover {
+                background-color: #218838;
+            }
+
+            .btn-highlight:active {
+                background-color: #1e7e34;
+                transform: translateY(1px);
+            }
+
+            /* 普通按钮（也设置宽度包裹，保持样式统一） */
+            .btn-normal {
+                background-color: #e9ecef;
+                color: #212529;
+                border: none;
+                border-radius: 4px;
+                display: inline-block;
+                padding: 6px 12px;
+                margin: 0 4px;
+                width: auto;
+                cursor: pointer;
+                outline: none;
+            }
             label {
                 display: block;
                 font-weight: bold;
@@ -331,7 +373,7 @@
     </head>
     <body>
         <div class="container">
-            <h1>产线分流计算器</h1>
+            <h1>电量分流计算器</h1>
 
             <div class="main-layout">
                 <div class="left-panel">
@@ -343,8 +385,10 @@
                         </p>
                         <p><strong>输入：</strong></p>
                         <ul>
-                            <li><strong>满转消耗(x)：</strong>热能池全开时游戏上方数字 x/y 中的 x</li>
-                            <li><strong>目前生产(y)：</strong>热能池缺电时游戏上方数字 x/y 中的 y</li>
+                            <li><strong>目前消耗(x)：</strong>热能池<strong>缺电</strong>时游戏上方数字 x/y 中的 x</li>
+                            <li>
+                                <strong>目前生产(y)：</strong>热能池<strong>缺电</strong>缺电时游戏上方数字 x/y 中的 y
+                            </li>
                         </ul>
                         <p><strong>电池容量：z</strong></p>
                         <ul>
@@ -358,16 +402,16 @@
                             <li>电池总容量：100000</li>
                             <li>充电时每秒增加：y + z - x</li>
                             <li>充电时间固定：40秒</li>
-                            <li>40秒内充满电量 = min((y - x) × 40, 100000)</li>
+                            <li>40秒充电量 = min((y - x) × 40, 100000)</li>
                             <li>掉电速率 = x - y</li>
-                            <li>最佳掉电时间 = 40秒内充满电量 / 掉电速率</li>
+                            <li>最佳掉电时间 = 40秒充电量 / 掉电速率</li>
                             <li>目标效率 = 最佳掉电时间 + 40秒</li>
                         </ul>
 
                         <p><strong>输出：</strong>具体的分流方案和实际效率（基础速度为 2秒/个）。</p>
                         <p>
-                            <strong>注意：</strong
-                            >本计算器基于从仓库拉取产线进行计算，而非从电池制造设备拉出。仓库产线具有最高运输效率和更好的可操控性。
+                            <strong>注意：</strong>
+                            本计算器基于从仓库拉取产线进行计算，而非从电池制造设备拉出。仓库产线具有最高运输效率和更好的可操控性。
                         </p>
                     </div>
                 </div>
@@ -375,13 +419,13 @@
                 <div class="right-panel">
                     <div class="input-section">
                         <div class="input-group">
-                            <label for="consumption">满转消耗 (x):</label>
+                            <label for="consumption">目前消耗 (x):</label>
                             <input
                                 type="number"
                                 id="consumption"
                                 min="1"
                                 step="1"
-                                placeholder="输入满转消耗"
+                                placeholder="输入目前消耗"
                                 oninput="validatePositiveInteger(this)"
                                 onkeypress="return isNumberKey(event)"
                             />
@@ -400,9 +444,7 @@
                         </div>
                         <button onclick="calculate()">计算分流方案</button>
                     </div>
-                    <div class="result-section" id="result">
-                       
-                    </div>
+                    <div class="result-section" id="result"></div>
                 </div>
 
                 <div class="pipeline-section" id="pipelineSection" style="display: none">
@@ -499,7 +541,9 @@
                     return
                 }
                 const results = document.getElementById('results')
+                const result = document.getElementById('result')
                 results.innerHTML = ''
+                result.innerHTML = ''
                 const solutions = []
 
                 BatteryUse.forEach((item) => {
@@ -509,7 +553,6 @@
                     solutions.push(chargeParam)
                 })
 
-                console.log(solutions)
                 displayResultsParam(solutions)
 
                 // // 步骤1：找到最小值
@@ -523,28 +566,35 @@
             function displayResultsParam(solutions) {
                 solutions.sort((a, b) => {
                     // 获取a、b子数组中第8项的totaltime（注意：数组索引从0开始）
-                    const actualTimeA = a[8]?.optimal.totalTime || 0 // 加?.避免undefined报错，兜底为0
-                    const maxChargeA = a[9] || 0
-                    const dischargeRateA = a[10] || 0
+                    const actualTimeA = a[9]?.optimal.totalTime || 0 // 加?.避免undefined报错，兜底为0
+                    const maxChargeA = a[10] || 0
+                    const dischargeRateA = a[11] || 0
 
-                    const actualTimeB = b[8]?.optimal.totalTime || 0
-                    const maxChargeB= b[9] || 0
-                    const dischargeRateB = b[10] || 0
+                    const actualTimeB = b[9]?.optimal.totalTime || 0
+                    const maxChargeB = b[10] || 0
+                    const dischargeRateB = b[11] || 0
 
-                    const  WasteA=  maxChargeA / actualTimeA - dischargeRateA
-                    const  WasteB=  maxChargeB / actualTimeB - dischargeRateB
-                    console.log(WasteA , WasteB)
+                    const WasteA = maxChargeA / actualTimeA - dischargeRateA
+                    const WasteB = maxChargeB / actualTimeB - dischargeRateB
+
                     return WasteA - WasteB // 升序：小的在前；若要降序，改为 timeB - timeA
                 })
-                console.log(solutions)
-                solutions.forEach(item=>{
+
+                solutions.forEach((item) => {
                     displayResults(...item)
                 })
+                displayResultsHref(solutions)
                 displaybestResults(...solutions[0])
-              
             }
             // 计算40秒内充满的电量
             function charge(batteryName, batteryValue, dischargeRate, x, y) {
+                const ids = {
+                    220: 'lowGudi',
+                    420: 'midGudi',
+                    1100: 'highGudi',
+                    1600: 'lowWuling'
+                }
+
                 const maxCapacity = 100000
                 const chargeRate = batteryValue - dischargeRate
                 const maxCharge = batteryValue * 40
@@ -564,6 +614,7 @@
                 const solutions = findBestSplit(targetRate)
 
                 return [
+                    ids[batteryValue],
                     batteryName,
                     x,
                     y,
@@ -860,7 +911,29 @@
                     totalTime: actualTime
                 }
             }
+            function displayResultsHref(solutions) {
+                const resultSection = document.getElementById('result')
+
+                let html = ` <div class="result-header"><h2>最优计算结果:`
+                solutions.forEach((item, index) => {
+                    if (index === 0) {
+                        // 第一个按钮：内联样式实现 error 颜色效果 + span 加粗
+                        html += `<button class="btn-highlight"  onclick="location.href='#${item[0]}'"> 
+            <span style="font-weight: bold;">${item[1]}</span>
+        </button>`
+                    } else {
+                        // 其余按钮：普通样式
+                        html += `<button  class="btn-normal" onclick="location.href='#${item[0]}'"> 
+            ${item[1]} 
+        </button>`
+                    }
+                })
+                html += `</div>`
+                resultSection.innerHTML += html
+            }
+
             function displaybestResults(
+                batteryId,
                 batteryType,
                 x,
                 y,
@@ -870,9 +943,9 @@
                 dischargeTime,
                 targetEfficiency,
                 solutions,
-                maxCharge, dischargeRate
+                maxCharge,
+                dischargeRate
             ) {
-                console.log(solutions)
                 const resultSection = document.getElementById('result')
 
                 if (!solutions.optimal || !solutions.optimal.pipeline) {
@@ -919,9 +992,7 @@
                 const priceInfo = batteryPrices[z] || { value: 0, unit: '券' }
                 const moneySavedPerDay = batterySavedPerDay * priceInfo.value
 
-                resultSection.innerHTML = `  <div class="result-header">
-                            <h2>最优计算结果:<span style="color: red; font-weight: bold;">${batteryType}</span></h2>
-                        </div>
+                resultSection.innerHTML += `
                         <div class="result-stats" id="resultStats">
                                                     <div class="stat-card">
                                                         <div class="stat-label">满电消耗 (x)</div>
@@ -992,9 +1063,10 @@
                                                     </div> 
                                                      <div class="stat-card" style="border-left-color: #4caf50;">
                                                         <div class="stat-label">每天需求电池</div>
-                                                        <div class="stat-value" style="color: #4caf50;">${(24*60*60/actualTime).toFixed(
-                                                           2
-                                                        )} 个</div>
+                                                        <div class="stat-value" style="color: #4caf50;">${(
+                                                            (24 * 60 * 60) /
+                                                            actualTime
+                                                        ).toFixed(2)} 个</div>
                                                     </div>
                                                     <div class="stat-card" style="border-left-color: #ff9800;">
                                                         <div class="stat-label">每天节省调度券</div>
@@ -1011,6 +1083,7 @@
                 })
             }
             function displayResults(
+                batteryId,
                 batteryType,
                 x,
                 y,
@@ -1071,7 +1144,7 @@
                 const moneySavedPerDay = batterySavedPerDay * priceInfo.value
 
                 results.innerHTML += ` <div class="result-header">
-                                <h2>${batteryType}计算结果</h2>
+                                <h2 id=${batteryId}>${batteryType}计算结果</h2>
                             </div>
                             <div class="result-stats" id="stats">
                                                     <div class="stat-card">
@@ -1143,9 +1216,10 @@
                                                     </div>  
                                                     <div class="stat-card" style="border-left-color: #4caf50;">
                                                         <div class="stat-label">每天需求电池</div>
-                                                        <div class="stat-value" style="color: #4caf50;">${(24*60*60/actualTime).toFixed(
-                                                           2
-                                                        )} 个</div>
+                                                        <div class="stat-value" style="color: #4caf50;">${(
+                                                            (24 * 60 * 60) /
+                                                            actualTime
+                                                        ).toFixed(2)} 个</div>
                                                     </div>
                                                     <div class="stat-card" style="border-left-color: #ff9800;">
                                                         <div class="stat-label">每天节省调度券</div>
@@ -1245,9 +1319,12 @@
                     '最接近目标效率，在效率相同时优先使用最少分流器',
                     '#39c5bb'
                 )
-
+                console.log(solutions.optimal, solutions.lightweight)
                 // 只有轻量化方案有效时才显示
-                if (solutions.lightweight && solutions.lightweight.pipeline) {
+                if (
+                    solutions.lightweight &&
+                    solutions.lightweight.pipeline && (solutions.optimal.totalTime !== solutions.lightweight.totalTime)
+                ) {
                     html += generatePipelineHTML(
                         solutions.lightweight.pipeline,
                         '轻量化方案',
@@ -1260,6 +1337,5 @@
                 pipelineSectionDiv.style.display = 'block'
             }
         </script>
-     
     </body>
 </html>
