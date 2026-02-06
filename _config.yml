@@ -1,0 +1,2 @@
+# _config.yml for project-a
+baseurl: "/endfield-calculator" # 注意：前面有斜杠，后面没有
