@@ -1,0 +1,63 @@
+name: Push index.html to Target Repo Folder
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'index.html'  # 只监听index.html的变更
+  workflow_dispatch:  # 手动触发测试
+
+jobs:
+  push-html-to-folder:
+    runs-on: ubuntu-latest
+    steps:
+      # 步骤1：拉取源仓库（仅含index.html）
+      - name: Checkout source repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 步骤2：配置Git身份
+      - name: Set Git credentials
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+      # 步骤3：克隆目标仓库（PAT认证）
+      - name: Clone target repository
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+          TARGET_REPO: "Eclair-Official/nav"  
+        run: |
+          git clone https://${PAT_TOKEN}@github.com/${TARGET_REPO}.git target-repo
+
+      # 步骤4：创建源仓库名文件夹 + 复制index.html（核心步骤）
+      - name: Create folder and copy index.html
+        env:
+          # 自动获取源仓库名（无需手动改），也可手动指定：SOURCE_REPO_NAME="你的源仓库名"
+          SOURCE_REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          # 1. 在目标仓库中创建以源仓库名命名的文件夹（不存在则创建）
+          mkdir -p ./target-repo/${SOURCE_REPO_NAME}
+          
+          # 2. 复制源仓库的index.html到这个文件夹
+          cp ./index.html ./target-repo/${SOURCE_REPO_NAME}/
+          
+          # 可选：如果想覆盖目标仓库该文件夹下的旧index.html，上面两步已自动覆盖，无需额外操作
+
+      # 步骤5：推送到目标仓库
+      - name: Push to target repository
+        env:
+          TARGET_BRANCH: "main"  # 替换：目标仓库分支（如gh-pages）
+          SOURCE_REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          cd target-repo
+          # 检查是否有变更
+          if [ -n "$(git status --porcelain)" ]; then
+            git add .
+            git commit -m "Update ${SOURCE_REPO_NAME}/index.html from source repo: ${{ github.sha }}"
+            git push origin ${TARGET_BRANCH}
+            echo "✅ index.html已推送到目标仓库的 ${SOURCE_REPO_NAME}/ 文件夹！"
+          else
+            echo "ℹ️ 无文件变更，无需推送"
+          fi
