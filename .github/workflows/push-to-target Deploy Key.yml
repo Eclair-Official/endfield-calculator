@@ -1,106 +1,71 @@
-# 工作流的名称，会显示在 GitHub Actions 页面上
 name: Push index.html to Target Repo Folder (Using Deploy Key)
 
-# 触发工作流的事件
 on:
-  # 当推送到 main 分支时触发
   push:
     branches: [ main ]
-    # 并且仅当 index.html 文件发生变化时触发，避免不必要的运行
     paths:
       - 'index.html'
-  # 允许在 GitHub Actions 页面上手动触发此工作流
   workflow_dispatch:
 
-# 定义该工作流要执行的任务（job）
 jobs:
-  # 任务（job）的名称
   push-html-to-folder:
-    # 指定运行环境为最新版本的 Ubuntu
     runs-on: ubuntu-latest
-
-    # 任务包含的步骤（step）
     steps:
-      # 步骤 1: 检出源仓库代码
-      # 使用官方的 checkout action，将当前仓库的代码下载到 runner 环境中
       - name: Checkout source repository
         uses: actions/checkout@v4
 
-      # 步骤 2: 设置 SSH Agent 和私钥
-      # 使用 webfactory/ssh-agent action 来安全地加载 SSH 私钥
-      # 它会自动启动 ssh-agent，并将密钥加入其中，同时配置 known_hosts
       - name: Setup SSH Agent
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          # 从仓库的 Secrets 中读取私钥，并将其传递给 action
-          # `DEPLOY_KEY` 是你需要在源仓库 Settings > Secrets 中设置的名称
           ssh-private-key: ${{ secrets.DEPLOY_KEY }}
 
-      # 步骤 3: 配置 Git 用户信息
-      # 在进行 git commit 操作前，需要设置提交者的用户名和邮箱
       - name: Configure Git User
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
 
-      # 步骤 4: 克隆目标仓库
-      # 使用 SSH URL 克隆需要被更新的目标仓库
       - name: Clone target repository
         env:
-          # 定义目标仓库的 SSH URL。请确保 URL 格式为 git@github.com:OWNER/REPO.git
           TARGET_REPO_SSH: "git@github.com:Eclair-Official/nav.git"
         run: |
-          # 将目标仓库克隆到名为 `target-repo` 的本地目录中
-          git clone ${TARGET_REPO_SSH} target-repo
+          # 克隆目标仓库，并指定深度为 1 以加快速度
+          git clone --depth 1 ${TARGET_REPO_SSH} target-repo
 
-      # 步骤 5: 准备并复制文件
-      # 在目标仓库的本地副本中创建目录，并复制 `index.html` 文件
       - name: Prepare folder and copy index.html
         env:
-          # 从 GitHub context 中获取当前源仓库的名称
           SOURCE_REPO_NAME: ${{ github.event.repository.name }}
         run: |
-          # 使用 mkdir -p 创建目录，如果父目录不存在会一并创建，且目录已存在时不会报错
-          # 目标路径是 target-repo/pages/源仓库名/
           mkdir -p ./target-repo/pages/${SOURCE_REPO_NAME}
-          # 将源仓库根目录下的 index.html 复制到刚才创建的目录中
           cp ./index.html ./target-repo/pages/${SOURCE_REPO_NAME}/
 
-      # 步骤 6: 提交并推送更改到目标仓库
-      # 进入目标仓库目录，检查变更，然后推送到指定的分支
-      - name: Commit and push to target repository
+      # --- 以下是修改和优化的核心步骤 ---
+      - name: Sync changes and push to target repository
         env:
-          # 定义要推送到的目标分支
           TARGET_BRANCH: "gh-pages"
-          # 再次获取源仓库名称，用于提交信息
           SOURCE_REPO_NAME: ${{ github.event.repository.name }}
         run: |
-          # 切换到目标仓库的目录
+          # 进入目标仓库目录
           cd target-repo
           
-          # 尝试切换到目标分支（例如 gh-pages）
-          # 如果分支不存在，则创建并切换到该新分支
-          git checkout ${TARGET_BRANCH} || git checkout -b ${TARGET_BRANCH}
-          
-          # 检查是否有文件变更（新增、修改或删除）
-          # --porcelain 选项会输出简短、易于脚本解析的状态信息
+          # 1. 检查是否有文件变更
           if [ -n "$(git status --porcelain)" ]; then
-            # 如果有变更，则执行以下操作
+            echo "ℹ️ Changes detected, preparing to push."
             
-            # 添加所有变更的文件到暂存区
+            # 2. 添加并提交变更
             git add .
-            
-            # 创建一个提交
-            # 提交信息中包含源仓库名和源仓库的 commit SHA，便于追踪
             git commit -m "Update ${SOURCE_REPO_NAME}/index.html from source repo @ ${{ github.sha }}"
             
-            # 将提交推送到远程仓库的对应分支
-            # origin 是在 clone 时自动创建的远程仓库别名
+            # 3. 拉取远程分支的最新代码并与本地合并
+            #    git pull origin <branch_name> 会自动尝试 merge 或 rebase
+            #    使用 --rebase 可以保持提交历史的线性，更清晰
+            #    如果远程有冲突，rebase 会在这里失败，整个 job 会失败，这是正确的
+            git pull origin ${TARGET_BRANCH} --rebase
+            
+            # 4. 推送合并后的代码
+            #    经过 rebase 后，本地分支已经包含了远程的最新代码，可以正常推送
             git push origin ${TARGET_BRANCH}
             
-            # 输出成功信息
-            echo "✅ Successfully pushed ${SOURCE_REPO_NAME}/index.html to the ${TARGET_BRANCH} branch of the target repository."
+            echo "✅ Successfully pushed ${SOURCE_REPO_NAME}/index.html to the ${TARGET_BRANCH} branch."
           else
-            # 如果没有变更，则输出提示信息并跳过推送
             echo "ℹ️ No changes to commit. Skipping push."
           fi
