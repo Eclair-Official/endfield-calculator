@@ -1,11 +1,21 @@
 name: Push index.html to Target Repo Folder
 
 on:
+  # 1. 原有的文件变更触发
   push:
     branches: [ main ]
     paths:
-      - 'index.html'  # 只监听index.html的变更
-  workflow_dispatch:  # 手动触发测试
+      - 'index.html'  
+
+  # 2. 手动触发测试
+  workflow_dispatch:
+
+  # 3. 新增的定时触发
+  schedule:
+    # --- 示例：每天北京时间上午 9:00 (UTC 1:00) 运行 ---
+    # cron格式：分钟 小时 日 月 星期
+    # '0 1 * * *' 表示每天 UTC 1:00
+    - cron: '0 1 * * *'
 
 jobs:
   push-html-to-folder:
@@ -15,9 +25,9 @@ jobs:
       - name: Checkout source repo
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # 获取完整历史，虽然这里用不到，但是好习惯
+          fetch-depth: 0 
 
-      # 步骤2：配置Git身份（为提交做准备）
+      # 步骤2：配置Git身份
       - name: Set Git credentials
         run: |
           git config --global user.name "GitHub Actions"
@@ -31,7 +41,7 @@ jobs:
         run: |
           git clone https://${PAT_TOKEN}@github.com/${TARGET_REPO}.git target-repo
 
-      # 步骤4：创建源仓库名文件夹 + 复制index.html（核心步骤）
+      # 步骤4：创建源仓库名文件夹 + 复制index.html
       - name: Create folder and copy index.html
         env:
           SOURCE_REPO_NAME: ${{ github.event.repository.name }}
@@ -39,25 +49,18 @@ jobs:
           mkdir -p ./target-repo/pages/${SOURCE_REPO_NAME}
           cp ./index.html ./target-repo/pages/${SOURCE_REPO_NAME}/
 
-      # 步骤5：切换到目标分支并推送到目标仓库 (已修改)
+      # 步骤5：切换到目标分支并推送到目标仓库
       - name: Push to target repository
         env:
-          TARGET_BRANCH: "gh-pages"  # 目标仓库分支
+          TARGET_BRANCH: "gh-pages"  
           SOURCE_REPO_NAME: ${{ github.event.repository.name }}
         run: |
           cd target-repo
-          
-          # --- 关键修改点 ---
-          # 1. 检查并切换到目标分支
-          # 使用 '|| git checkout -b ${TARGET_BRANCH}' 来处理分支不存在的情况
           git checkout ${TARGET_BRANCH} || git checkout -b ${TARGET_BRANCH}
           
-          # 2. 检查是否有变更
           if [ -n "$(git status --porcelain)" ]; then
             git add .
             git commit -m "Update ${SOURCE_REPO_NAME}/index.html from source repo: ${{ github.sha }}"
-            # 3. 推送到远程的对应分支
-            # 使用 --force-with-lease 确保能覆盖远程分支历史（gh-pages部署常见需求）
             git push origin ${TARGET_BRANCH} --force-with-lease
             echo "✅ ${SOURCE_REPO_NAME}/index.html 已推送到目标仓库的 ${TARGET_BRANCH} 分支！"
           else
