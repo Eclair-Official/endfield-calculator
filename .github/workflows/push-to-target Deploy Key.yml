@@ -19,39 +19,63 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: Setup SSH Agent
+            # --- 将 Setup 和 Clone 步骤替换为这个调试块 ---
+      - name: Step-by-Step SSH Diagnosis
         env:
           DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
-        run: |
-          # 检查密钥是否存在
-          if [ -z "$DEPLOY_KEY" ]; then
-            echo "DEPLOY_KEY is not set"
-            exit 1
-          fi
-          
-          # 启动 ssh-agent
-          eval "$(ssh-agent -s)"
-          
-          # 将私钥添加到 agent
-          ssh-add - <<< "$DEPLOY_KEY"
-          
-          # 添加 github.com 到 known_hosts
-          mkdir -p ~/.ssh
-          ssh-keyscan github.com >> ~/.ssh/known_hosts
-
-      - name: Clone target repository
-        env:
           TARGET_REPO_SSH: ${{ secrets.TARGET_REPO_SSH }}
         run: |
+          echo "---=== DEBUG START ===---"
+          
+          # 1. 检查原始 Secret 内容
+          echo "1. Checking raw secrets..."
+          if [ -z "$DEPLOY_KEY" ]; then
+            echo "❌ FATAL: DEPLOY_KEY secret is empty."
+            exit 1
+          else
+            echo "✅ DEPLOY_KEY secret is not empty."
+            echo "   First 20 chars: ${DEPLOY_KEY:0:20}..."
+          fi
+          if [ -z "$TARGET_REPO_SSH" ]; then
+            echo "❌ FATAL: TARGET_REPO_SSH secret is empty."
+            exit 1
+          else
+            echo "✅ TARGET_REPO_SSH secret is not empty."
+            echo "   Value: ${TARGET_REPO_SSH}"
+          fi
+
+          # 2. 设置 SSH Agent
+          echo ""
+          echo "2. Starting ssh-agent..."
+          eval "$(ssh-agent -s)"
+          echo "✅ ssh-agent started."
+
+          # 3. 添加密钥到 Agent
+          echo ""
+          echo "3. Adding key to ssh-agent..."
+          # 使用 tee 将密钥写入临时文件，以便检查
+          echo "$DEPLOY_KEY" | tee /tmp/deploy_key_temp
+          # 使用临时文件添加
+          ssh-add /tmp/deploy_key_temp
+          echo "✅ Key added to agent."
+
+          # 4. 列出 Agent 中的密钥
+          echo ""
+          echo "4. Listing keys in ssh-agent..."
+          ssh-add -l
+
+          # 5. 测试 SSH 连接
+          echo ""
+          echo "5. Testing raw SSH connection to GitHub..."
+          ssh -T -o StrictHostKeyChecking=no git@github.com
+          
+          # 6. 克隆仓库
+          echo ""
+          echo "6. Attempting git clone..."
           git clone ${TARGET_REPO_SSH} target-repo
-
-      - name: Copy file to target repository
-        env:
-          SOURCE_REPO_NAME: ${{ github.event.repository.name }}
-        run: |
-          mkdir -p ./target-repo/pages/${SOURCE_REPO_NAME}
-          cp ./index.html ./target-repo/pages/${SOURCE_REPO_NAME}/
-
+          echo "✅ git clone successful."
+          
+          echo "---=== DEBUG END ===---"
       - name: Commit and push changes
         env:
           TARGET_BRANCH: "gh-pages"
