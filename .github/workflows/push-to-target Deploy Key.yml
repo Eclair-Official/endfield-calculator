@@ -1,6 +1,6 @@
 # .github/workflows/deploy.yml
 
-name: Deploy to Target Repo
+name: Deploy to Target Repo (Final Method)
 
 on:
   push:
@@ -19,29 +19,11 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: Setup SSH Agent
+      - name: Clone target repo to workspace
         env:
-          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          TARGET_REPO_URL: ${{ secrets.TARGET_REPO_URL }}
         run: |
-          # 启动 ssh-agent
-          eval "$(ssh-agent -s)"
-          
-          # 将私钥写入临时文件并设置正确权限
-          echo "$DEPLOY_KEY" > /tmp/deploy_key
-          chmod 600 /tmp/deploy_key
-          
-          # 将私钥添加到 agent
-          ssh-add /tmp/deploy_key
-          
-          # 添加 github.com 到 known_hosts
-          mkdir -p ~/.ssh
-          ssh-keyscan github.com >> ~/.ssh/known_hosts
-
-      - name: Clone target repository
-        env:
-          TARGET_REPO_SSH: ${{ secrets.TARGET_REPO_SSH }}
-        run: |
-          git clone ${TARGET_REPO_SSH} target-repo
+          git clone ${TARGET_REPO_URL} target-repo
 
       - name: Copy file to target repository
         env:
@@ -49,23 +31,29 @@ jobs:
         run: |
           mkdir -p ./target-repo/pages/${SOURCE_REPO_NAME}
           cp ./index.html ./target-repo/pages/${SOURCE_REPO_NAME}/
+          echo "✅ File copied to workspace."
 
-      - name: Commit and push changes
-        env:
-          TARGET_BRANCH: "gh-pages"
-          SOURCE_REPO_NAME: ${{ github.event.repository.name }}
-        run: |
-          cd target-repo
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          git checkout ${TARGET_BRANCH} || git checkout -b ${TARGET_BRANCH}
-          
-          if [ -n "$(git status --porcelain)" ]; then
-            git add .
-            git commit -m "feat: Update ${SOURCE_REPO_NAME}/index.html from ${{ github.sha }}"
-            git push origin ${TARGET_BRANCH}
-            echo "✅ Deployment successful."
-          else
-            echo "ℹ️ No changes to deploy."
-          fi
+      - name: Deploy changes via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd /home/runner/work/_temp/_github_home/target-repo
+            # 在远程环境配置 Git
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            # 切换分支
+            git checkout gh-pages || git checkout -b gh-pages
+            # 提交并推送
+            if [ -n "$(git status --porcelain)" ]; then
+              git add .
+              git commit -m "feat: Update ${{ github.event.repository.name }}/index.html"
+              # 使用 HTTPS URL 推送，因为 SSH 认证已经由 Action 处理
+              git remote set-url origin ${{ secrets.TARGET_REPO_URL }}
+              git push origin gh-pages
+              echo "✅ Deployment successful!"
+            else
+              echo "ℹ️ No changes to deploy."
+            fi
