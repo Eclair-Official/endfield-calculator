@@ -41,14 +41,14 @@ jobs:
           mkdir -p ./target-repo/${SOURCE_REPO_NAME}
           
           # 2. 复制源仓库的index.html到这个文件夹
-          cp ./index.html ./target-repo/${SOURCE_REPO_NAME}/
+          cp ./index.html ./target-repo/pages/${SOURCE_REPO_NAME}/
           
           # 可选：如果想覆盖目标仓库该文件夹下的旧index.html，上面两步已自动覆盖，无需额外操作
 
       # 步骤5：推送到目标仓库
       - name: Push to target repository
         env:
-          TARGET_BRANCH: "main"  # 替换：目标仓库分支（如gh-pages）
+          TARGET_BRANCH: "gh-pages"  # 替换：目标仓库分支（如gh-pages）
           SOURCE_REPO_NAME: ${{ github.event.repository.name }}
         run: |
           cd target-repo
