@@ -38,7 +38,7 @@ jobs:
           SOURCE_REPO_NAME: ${{ github.event.repository.name }}
         run: |
           # 1. 在目标仓库中创建以源仓库名命名的文件夹（不存在则创建）
-          mkdir -p ./target-repo/${SOURCE_REPO_NAME}
+          mkdir -p ./target-repo/pages/${SOURCE_REPO_NAME}
           
           # 2. 复制源仓库的index.html到这个文件夹
           cp ./index.html ./target-repo/pages/${SOURCE_REPO_NAME}/
