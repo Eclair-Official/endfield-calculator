@@ -1,0 +1,47 @@
+# .github/workflows/use-deploy-key.yml
+
+name: Use Deploy Key Secret
+
+on:
+  # 允许手动触发，便于测试
+  workflow_dispatch:
+
+jobs:
+  access-secret:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 步骤 1: 检出代码仓库
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 步骤 2: 访问并使用名为 DEPLOY_KEY 的 Secret
+      - name: Access DEPLOY_KEY
+        run: |
+          echo "Successfully accessed the secret."
+          
+          # 示例：将 DEPLOY_KEY Secret 的内容写入到一个临时 SSH 私钥文件中
+          # 注意：<<EOF 是一个安全的写入多行内容的方式
+          echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/deploy_key
+
+          # 设置正确的文件权限，这对于 SSH 私钥至关重要
+          chmod 600 ~/.ssh/deploy_key
+
+          # 验证文件是否创建成功并包含内容（仅在调试时使用，不要在日志中打印真实的密钥）
+          echo "Deploy key file created at ~/.ssh/deploy_key"
+          
+          # 打印文件的第一个字符（仅为验证文件非空，请勿在生产环境中打印密钥内容）
+          # FIRST_CHAR=$(head -c 1 ~/.ssh/deploy_key)
+          # echo "First character of the key is: '$FIRST_CHAR'"
+
+      # 步骤 3: 演示如何使用这个密钥（例如，通过 SSH 连接到服务器）
+      - name: Example usage with SSH (Requires a server to connect to)
+        # 这一步是示例，实际运行时需要你提供一个可用的服务器
+        # 你可以暂时注释掉 `run` 部分来仅验证密钥的创建
+        run: |
+          echo "This step demonstrates how to use the key for an SSH command."
+          echo "Actual command is commented out for safety."
+          
+          # 在实际使用中，你可能会运行类似下面的命令：
+          # ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no user@your-server.com 'ls -l'
+          echo "SSH command would be executed here."
