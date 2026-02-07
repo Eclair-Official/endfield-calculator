@@ -1,6 +1,4 @@
-# .github/workflows/deploy.yml
-
-name: Push index.html to Target Repo Folder (Optimized)
+name: Push index.html to Target Repo Folder (Using Deploy Key)
 
 on:
   push:
@@ -9,60 +7,60 @@ on:
       - 'index.html'
   workflow_dispatch:
 
-# 全局环境变量，方便统一维护
-env:
-  TARGET_REPO: "Eclair-Official/nav"
-  TARGET_BRANCH: "gh-pages"
-
 jobs:
   push-html-to-folder:
     runs-on: ubuntu-latest
-    permissions:
-      # 需要读取源仓库内容
-      contents: read
-
     steps:
       # 步骤1：拉取源仓库（当前仓库）
       - name: Checkout source repo
         uses: actions/checkout@v4
 
-      # 步骤2：克隆目标仓库 (使用 Deploy Key 认证)
-      - name: Clone target repository
+      # 步骤2：(新增) 设置 SSH 客户端和密钥
+      - name: Setup SSH Key and Git Config
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
         run: |
-          # 使用 SSH 协议和 Deploy Key 进行认证
-          # GIT_SSH_COMMAND 环境变量可以临时指定 ssh key
-          GIT_SSH_COMMAND="ssh -i ${{ secrets.DEPLOY_KEY }}" git clone git@github.com:${{ env.TARGET_REPO }}.git target-repo
+          mkdir -p ~/.ssh
+          echo "${DEPLOY_KEY}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          
+          # 配置 Git 用户信息
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
 
-      # 步骤3：创建源仓库名文件夹 + 复制index.html（核心步骤）
+      # 步骤3：(修改) 使用 SSH 克隆目标仓库
+      - name: Clone target repository using SSH
+        env:
+          # 注意这里的 URL 格式是 git@github.com:...
+          TARGET_REPO_SSH: "git@github.com:Eclair-Official/nav.git"
+        run: |
+          git clone ${TARGET_REPO_SSH} target-repo
+
+      # 步骤4：创建源仓库名文件夹 + 复制index.html
       - name: Create folder and copy index.html
         env:
           SOURCE_REPO_NAME: ${{ github.event.repository.name }}
         run: |
           mkdir -p ./target-repo/pages/${SOURCE_REPO_NAME}
           cp ./index.html ./target-repo/pages/${SOURCE_REPO_NAME}/
-          echo "✅ File copied successfully."
 
-      # 步骤4：提交并推送到目标仓库
-      - name: Commit and push to target repository
+      # 步骤5：切换到目标分支并推送到目标仓库
+      - name: Push to target repository
+        env:
+          TARGET_BRANCH: "gh-pages"
+          SOURCE_REPO_NAME: ${{ github.event.repository.name }}
         run: |
           cd target-repo
+          git checkout ${TARGET_BRANCH} || git checkout -b ${TARGET_BRANCH}
           
-          # 为本次推送配置 Git 身份
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          # 检查并切换到目标分支（你的写法很棒，保留）
-          git checkout ${{ env.TARGET_BRANCH }} || git checkout -b ${{ env.TARGET_BRANCH }}
-          
-          # 检查是否有变更，避免空提交
           if [ -n "$(git status --porcelain)" ]; then
             git add .
-            git commit -m "docs: update pages/${{ env.SOURCE_REPO_NAME }}/index.html"
-            
-            # 再次使用 Deploy Key 进行推送
-            GIT_SSH_COMMAND="ssh -i ${{ secrets.DEPLOY_KEY }}" git push origin ${{ env.TARGET_BRANCH }}
-            
-            echo "✅ Changes pushed to ${{ env.TARGET_REPO }} on branch ${{ env.TARGET_BRANCH }}!"
+            git commit -m "Update ${SOURCE_REPO_NAME}/index.html from source repo: ${{ github.sha }}"
+            # 注意：使用 Deploy Key 后，推送不再需要 force-with-lease
+            # 推荐使用普通推送，更安全
+            git push origin ${TARGET_BRANCH}
+            echo "✅ ${SOURCE_REPO_NAME}/index.html 已推送到目标仓库的 ${TARGET_BRANCH} 分支！"
           else
-            echo "ℹ️ No changes to commit. Skipping push."
+            echo "ℹ️ 无文件变更，无需推送"
           fi
