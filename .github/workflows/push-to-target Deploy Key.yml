@@ -1,103 +1,73 @@
-# 文件名: .github/workflows/deploy.yml
+# 文件路径: .github/workflows/push-to-target Deploy Key.yml
 
-name: Deploy index.html to Target Repo
+name: Deploy to Target Repo
 
 on:
-  # 当 main 分支的 index.html 文件有推送时触发
   push:
     branches: [ main ]
     paths:
       - 'index.html'
-  # 允许在 Actions 页面手动触发
   workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
-      # 为了能向其他仓库推送，需要写入 contents 权限
       contents: write
 
     steps:
-      # 步骤 1: 检出源仓库代码
-      - name: Checkout source repository
+      - name: Checkout source code
         uses: actions/checkout@v4
 
-      # 步骤 2: 设置 SSH 和 Git 环境
-      - name: Setup SSH and Git environment
+      - name: Setup SSH Agent
         env:
-          # 从源仓库的 Secrets 中读取私钥
           DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
-          # 从源仓库的 Secrets 中读取目标仓库的 SSH URL
-          # 格式应为: git@github.com:OWNER/REPO_NAME.git
-          TARGET_REPO_SSH: ${{ secrets.TARGET_REPO_SSH }}
         run: |
-          # --- 健壮性检查：确保必要的 Secrets 存在 ---
+          # 检查密钥是否存在
           if [ -z "$DEPLOY_KEY" ]; then
-            echo "❌ Error: DEPLOY_KEY secret is not set or is empty."
-            echo "Please check your repository's secrets."
+            echo "DEPLOY_KEY is not set"
             exit 1
           fi
-          if [ -z "$TARGET_REPO_SSH" ]; then
-            echo "❌ Error: TARGET_REPO_SSH secret is not set or is empty."
-            echo "Please check your repository's secrets."
-            exit 1
-          fi
-
-          echo "✅ Secrets found. Setting up SSH environment."
           
-          # 创建 .ssh 目录
+          # 启动 ssh-agent
+          eval "$(ssh-agent -s)"
+          
+          # 将私钥添加到 agent
+          ssh-add - <<< "$DEPLOY_KEY"
+          
+          # 添加 github.com 到 known_hosts
           mkdir -p ~/.ssh
-          # 将私钥写入文件
-          echo "${DEPLOY_KEY}" > ~/.ssh/deploy_key
-          # 设置私钥文件权限 (SSH要求)
-          chmod 600 ~/.ssh/deploy_key
-          # 添加 GitHub 到 known_hosts，避免交互式确认
           ssh-keyscan github.com >> ~/.ssh/known_hosts
 
-          # 配置 Git 用户信息
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-      # 步骤 3: 克隆目标仓库
       - name: Clone target repository
         env:
           TARGET_REPO_SSH: ${{ secrets.TARGET_REPO_SSH }}
         run: |
           git clone ${TARGET_REPO_SSH} target-repo
 
-      # 步骤 4: 复制文件到目标仓库的指定目录
-      - name: Copy index.html to target folder
+      - name: Copy file to target repository
         env:
-          # 自动获取源仓库名
           SOURCE_REPO_NAME: ${{ github.event.repository.name }}
         run: |
-          # 创建目标目录，-p 选项保证即使目录存在也不会报错
           mkdir -p ./target-repo/pages/${SOURCE_REPO_NAME}
-          # 复制 index.html 到目标目录
           cp ./index.html ./target-repo/pages/${SOURCE_REPO_NAME}/
-          echo "📁 Copied index.html to target-repo/pages/${SOURCE_REPO_NAME}/"
 
-      # 步骤 5: 检查变更并推送到目标仓库
-      - name: Check for changes and push
+      - name: Commit and push changes
         env:
           TARGET_BRANCH: "gh-pages"
           SOURCE_REPO_NAME: ${{ github.event.repository.name }}
         run: |
           cd target-repo
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # 切换到目标分支，如果不存在则创建
           git checkout ${TARGET_BRANCH} || git checkout -b ${TARGET_BRANCH}
           
-          # 检查工作区是否有未提交的变更
           if [ -n "$(git status --porcelain)" ]; then
-            echo "🚀 Changes detected. Committing and pushing..."
             git add .
-            # 提交变更，包含源仓库的 commit SHA 以便追溯
-            git commit -m "chore: Update ${SOURCE_REPO_NAME}/index.html from source repo: ${{ github.sha }}"
-            # 推送到远程分支。使用 Deploy Key 后不再需要 force
+            git commit -m "feat: Update ${SOURCE_REPO_NAME}/index.html from ${{ github.sha }}"
             git push origin ${TARGET_BRANCH}
-            echo "✅ Successfully pushed to ${TARGET_BRANCH}!"
+            echo "✅ Deployment successful."
           else
-            echo "ℹ️ No changes to commit. Nothing to do."
+            echo "ℹ️ No changes to deploy."
           fi
