@@ -11,6 +11,14 @@ jobs:
   push-html-to-folder:
     runs-on: ubuntu-latest
     steps:
+      -  name: Debug SSH Key
+         run: |
+          echo "--- Checking if private key file exists ---"
+          ls -l ~/.ssh/deploy_key
+          echo "--- Checking private key file content (first few lines) ---"
+          head -n 3 ~/.ssh/deploy_key
+          echo "--- Checking SSH connection ---"
+          ssh -T git@github.com
       # 步骤1：拉取源仓库（当前仓库）
       - name: Checkout source repo
         uses: actions/checkout@v4
