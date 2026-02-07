@@ -1,74 +1,103 @@
-name: Push index.html to Target Repo Folder (Using Deploy Key)
+# 文件名: .github/workflows/deploy.yml
+
+name: Deploy index.html to Target Repo
 
 on:
+  # 当 main 分支的 index.html 文件有推送时触发
   push:
     branches: [ main ]
     paths:
       - 'index.html'
+  # 允许在 Actions 页面手动触发
   workflow_dispatch:
 
 jobs:
-  push-html-to-folder:
+  deploy:
     runs-on: ubuntu-latest
+    permissions:
+      # 为了能向其他仓库推送，需要写入 contents 权限
+      contents: write
+
     steps:
-      -  name: Debug SSH Key
-         run: |
-          echo "--- Checking if private key file exists ---"
-          ls -l ~/.ssh/deploy_key
-          echo "--- Checking private key file content (first few lines) ---"
-          head -n 3 ~/.ssh/deploy_key
-          echo "--- Checking SSH connection ---"
-          ssh -T git@github.com
-      # 步骤1：拉取源仓库（当前仓库）
-      - name: Checkout source repo
+      # 步骤 1: 检出源仓库代码
+      - name: Checkout source repository
         uses: actions/checkout@v4
 
-      # 步骤2：(新增) 设置 SSH 客户端和密钥
-      - name: Setup SSH Key and Git Config
+      # 步骤 2: 设置 SSH 和 Git 环境
+      - name: Setup SSH and Git environment
         env:
+          # 从源仓库的 Secrets 中读取私钥
           DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          # 从源仓库的 Secrets 中读取目标仓库的 SSH URL
+          # 格式应为: git@github.com:OWNER/REPO_NAME.git
+          TARGET_REPO_SSH: ${{ secrets.TARGET_REPO_SSH }}
         run: |
-          mkdir -p ~/.ssh
-          echo "${DEPLOY_KEY}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan github.com >> ~/.ssh/known_hosts
-          
-          # 配置 Git 用户信息
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
+          # --- 健壮性检查：确保必要的 Secrets 存在 ---
+          if [ -z "$DEPLOY_KEY" ]; then
+            echo "❌ Error: DEPLOY_KEY secret is not set or is empty."
+            echo "Please check your repository's secrets."
+            exit 1
+          fi
+          if [ -z "$TARGET_REPO_SSH" ]; then
+            echo "❌ Error: TARGET_REPO_SSH secret is not set or is empty."
+            echo "Please check your repository's secrets."
+            exit 1
+          fi
 
-      # 步骤3：(修改) 使用 SSH 克隆目标仓库
-      - name: Clone target repository using SSH
+          echo "✅ Secrets found. Setting up SSH environment."
+          
+          # 创建 .ssh 目录
+          mkdir -p ~/.ssh
+          # 将私钥写入文件
+          echo "${DEPLOY_KEY}" > ~/.ssh/deploy_key
+          # 设置私钥文件权限 (SSH要求)
+          chmod 600 ~/.ssh/deploy_key
+          # 添加 GitHub 到 known_hosts，避免交互式确认
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+          # 配置 Git 用户信息
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      # 步骤 3: 克隆目标仓库
+      - name: Clone target repository
         env:
-          # 注意这里的 URL 格式是 git@github.com:...
-          TARGET_REPO_SSH: "git@github.com:Eclair-Official/nav.git"
+          TARGET_REPO_SSH: ${{ secrets.TARGET_REPO_SSH }}
         run: |
           git clone ${TARGET_REPO_SSH} target-repo
 
-      # 步骤4：创建源仓库名文件夹 + 复制index.html
-      - name: Create folder and copy index.html
+      # 步骤 4: 复制文件到目标仓库的指定目录
+      - name: Copy index.html to target folder
         env:
+          # 自动获取源仓库名
           SOURCE_REPO_NAME: ${{ github.event.repository.name }}
         run: |
+          # 创建目标目录，-p 选项保证即使目录存在也不会报错
           mkdir -p ./target-repo/pages/${SOURCE_REPO_NAME}
+          # 复制 index.html 到目标目录
           cp ./index.html ./target-repo/pages/${SOURCE_REPO_NAME}/
+          echo "📁 Copied index.html to target-repo/pages/${SOURCE_REPO_NAME}/"
 
-      # 步骤5：切换到目标分支并推送到目标仓库
-      - name: Push to target repository
+      # 步骤 5: 检查变更并推送到目标仓库
+      - name: Check for changes and push
         env:
           TARGET_BRANCH: "gh-pages"
           SOURCE_REPO_NAME: ${{ github.event.repository.name }}
         run: |
           cd target-repo
+          
+          # 切换到目标分支，如果不存在则创建
           git checkout ${TARGET_BRANCH} || git checkout -b ${TARGET_BRANCH}
           
+          # 检查工作区是否有未提交的变更
           if [ -n "$(git status --porcelain)" ]; then
+            echo "🚀 Changes detected. Committing and pushing..."
             git add .
-            git commit -m "Update ${SOURCE_REPO_NAME}/index.html from source repo: ${{ github.sha }}"
-            # 注意：使用 Deploy Key 后，推送不再需要 force-with-lease
-            # 推荐使用普通推送，更安全
+            # 提交变更，包含源仓库的 commit SHA 以便追溯
+            git commit -m "chore: Update ${SOURCE_REPO_NAME}/index.html from source repo: ${{ github.sha }}"
+            # 推送到远程分支。使用 Deploy Key 后不再需要 force
             git push origin ${TARGET_BRANCH}
-            echo "✅ ${SOURCE_REPO_NAME}/index.html 已推送到目标仓库的 ${TARGET_BRANCH} 分支！"
+            echo "✅ Successfully pushed to ${TARGET_BRANCH}!"
           else
-            echo "ℹ️ 无文件变更，无需推送"
+            echo "ℹ️ No changes to commit. Nothing to do."
           fi
