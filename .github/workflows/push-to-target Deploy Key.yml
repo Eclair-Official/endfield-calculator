@@ -1,4 +1,6 @@
-name: Deploy to Target Repo (Optimized Method)
+# .github/workflows/deploy.yml
+
+name: Push index.html to Target Repo Folder (Optimized)
 
 on:
   push:
@@ -7,50 +9,60 @@ on:
       - 'index.html'
   workflow_dispatch:
 
+# 全局环境变量，方便统一维护
+env:
+  TARGET_REPO: "Eclair-Official/nav"
+  TARGET_BRANCH: "gh-pages"
+
 jobs:
-  deploy:
+  push-html-to-folder:
     runs-on: ubuntu-latest
-    # 需要写入权限，以便 Runner 可以推送代码到目标仓库
     permissions:
-      contents: write
+      # 需要读取源仓库内容
+      contents: read
 
     steps:
-      # 步骤 1: 检出源代码
-      - name: Checkout source code
+      # 步骤1：拉取源仓库（当前仓库）
+      - name: Checkout source repo
         uses: actions/checkout@v4
 
-      # 步骤 2: 检出目标仓库 (使用 deploy key 认证)
-      - name: Checkout target repository
-        uses: actions/checkout@v4
-        with:
-          repository: Eclair-Official/nav # 替换为你的目标仓库，例如 "my-org/my-docs"
-          token: ${{ secrets.DEPLOY_KEY }} # 使用 Deploy Key 对应的 Secret
-          path: target-repo # 将目标仓库检出到 'target-repo' 目录
-          ref: gh-pages # 直接检出 gh-pages 分支
+      # 步骤2：克隆目标仓库 (使用 Deploy Key 认证)
+      - name: Clone target repository
+        run: |
+          # 使用 SSH 协议和 Deploy Key 进行认证
+          # GIT_SSH_COMMAND 环境变量可以临时指定 ssh key
+          GIT_SSH_COMMAND="ssh -i ${{ secrets.DEPLOY_KEY }}" git clone git@github.com:${{ env.TARGET_REPO }}.git target-repo
 
-      # 步骤 3: 复制文件到目标仓库目录
-      - name: Copy file to target repository
+      # 步骤3：创建源仓库名文件夹 + 复制index.html（核心步骤）
+      - name: Create folder and copy index.html
         env:
           SOURCE_REPO_NAME: ${{ github.event.repository.name }}
         run: |
           mkdir -p ./target-repo/pages/${SOURCE_REPO_NAME}
           cp ./index.html ./target-repo/pages/${SOURCE_REPO_NAME}/
-          echo "✅ File copied to workspace."
+          echo "✅ File copied successfully."
 
-      # 步骤 4: 提交并推送到目标仓库
-      - name: Commit and push changes
+      # 步骤4：提交并推送到目标仓库
+      - name: Commit and push to target repository
         run: |
           cd target-repo
-          # 在 Runner 环境配置 Git 用户信息
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # 为本次推送配置 Git 身份
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # 检查是否有变更
+          # 检查并切换到目标分支（你的写法很棒，保留）
+          git checkout ${{ env.TARGET_BRANCH }} || git checkout -b ${{ env.TARGET_BRANCH }}
+          
+          # 检查是否有变更，避免空提交
           if [ -n "$(git status --porcelain)" ]; then
             git add .
-            git commit -m "feat: Update ${SOURCE_REPO_NAME}/index.html from source repo"
-            git push origin gh-pages
-            echo "✅ Deployment to target repo successful!"
+            git commit -m "docs: update pages/${{ env.SOURCE_REPO_NAME }}/index.html"
+            
+            # 再次使用 Deploy Key 进行推送
+            GIT_SSH_COMMAND="ssh -i ${{ secrets.DEPLOY_KEY }}" git push origin ${{ env.TARGET_BRANCH }}
+            
+            echo "✅ Changes pushed to ${{ env.TARGET_REPO }} on branch ${{ env.TARGET_BRANCH }}!"
           else
-            echo "ℹ️ No changes to deploy."
+            echo "ℹ️ No changes to commit. Skipping push."
           fi
