@@ -28,10 +28,8 @@ jobs:
         env:
           TARGET_REPO_SSH: "git@github.com:Eclair-Official/nav.git"
         run: |
-          # 克隆时只拉取目标分支，这会更高效且避免混淆
-          git clone --single-branch --branch ${TARGET_BRANCH} ${TARGET_REPO_SSH} target-repo
-        env:
-          TARGET_BRANCH: "gh-pages" # 定义目标分支
+          # 克隆目标仓库，并指定深度为 1 以加快速度
+          git clone --depth 1 ${TARGET_REPO_SSH} target-repo
 
       - name: Prepare folder and copy index.html
         env:
@@ -40,27 +38,32 @@ jobs:
           mkdir -p ./target-repo/pages/${SOURCE_REPO_NAME}
           cp ./index.html ./target-repo/pages/${SOURCE_REPO_NAME}/
 
-      # --- 以下是最终修正的核心步骤 ---
-      - name: Commit and push changes
+      # --- 以下是修改和优化的核心步骤 ---
+      - name: Sync changes and push to target repository
         env:
           TARGET_BRANCH: "gh-pages"
           SOURCE_REPO_NAME: ${{ github.event.repository.name }}
         run: |
           # 进入目标仓库目录
           cd target-repo
+          git checkout ${TARGET_BRANCH} || git checkout -b ${TARGET_BRANCH}
           
           # 1. 检查是否有文件变更
-          #    因为克隆时已经位于 gh-pages 分支，所以无需 checkout
           if [ -n "$(git status --porcelain)" ]; then
-            echo "ℹ️ Changes detected on branch '${TARGET_BRANCH}', preparing to push."
+            echo "ℹ️ Changes detected, preparing to push."
             
             # 2. 添加并提交变更
             git add .
             git commit -m "Update ${SOURCE_REPO_NAME}/index.html from source repo @ ${{ github.sha }}"
             
-            # 3. 推送变更
-            #    因为我们是从最新的远程分支开始操作的，并且没有其他人修改这个分支，
-            #    所以一个简单的 git push 就足够了。如果担心并发修改，可以保留 pull --rebase。
+            # 3. 拉取远程分支的最新代码并与本地合并
+            #    git pull origin <branch_name> 会自动尝试 merge 或 rebase
+            #    使用 --rebase 可以保持提交历史的线性，更清晰
+            #    如果远程有冲突，rebase 会在这里失败，整个 job 会失败，这是正确的
+            git pull origin ${TARGET_BRANCH} --rebase
+            
+            # 4. 推送合并后的代码
+            #    经过 rebase 后，本地分支已经包含了远程的最新代码，可以正常推送
             git push origin ${TARGET_BRANCH}
             
             echo "✅ Successfully pushed ${SOURCE_REPO_NAME}/index.html to the ${TARGET_BRANCH} branch."
